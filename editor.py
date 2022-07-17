@@ -39,13 +39,11 @@ class Editor:
         self.arena_zoom = self.ARENA_MIN_ZOOM
         self.zoom_focus_point = [self.MIN_POINT_COORD, self.MIN_POINT_COORD]  # in left top corner
         self.swiping_active = False
-        self.node_adding_active = False
 
         self.objects_to_display = {}  # format: {"object_name": [item, (coord_x, coord_y)], ...}
         self.set_arena_zoom_text(self.arena_zoom)
 
         self.points = []
-        self.points_arena_coords = []
         self.fill_points_from_file("data/json1")
 
     def size_ratio(self):
@@ -56,13 +54,39 @@ class Editor:
         size_for_points = self.MAX_POINT_COORD - self.MIN_POINT_COORD
         return (self.ARENA_WIDTH / size_for_points) * self.arena_zoom
 
-    def fill_points_arena_coords(self):
+    def point_under_mouse(self):
+        return self.arena_coords_to_true(pygame.mouse.get_pos())
+
+    def true_coords_to_arena(self, point):
         size_ratio = self.size_ratio()
-        self.points_arena_coords = []
-        for x, y in self.points:
-            display_x = (x - self.MIN_POINT_COORD - self.zoom_focus_point[0]) * size_ratio
-            display_y = (y - self.MIN_POINT_COORD - self.zoom_focus_point[1]) * size_ratio
-            self.points_arena_coords.append((display_x, display_y))
+        arena_point = [
+            (point[0] - self.MIN_POINT_COORD - self.zoom_focus_point[0]) * size_ratio,
+            (point[1] - self.MIN_POINT_COORD - self.zoom_focus_point[1]) * size_ratio
+        ]
+        return arena_point
+
+    def arena_coords_to_true(self, point):
+        size_ratio = self.size_ratio()
+        displacement_from_focus = point[0] / size_ratio, point[1] / size_ratio
+        return self.zoom_focus_point[0] + displacement_from_focus[0], \
+               self.zoom_focus_point[1] + displacement_from_focus[1]
+
+    @staticmethod
+    def euclidean_distance(point1, point2):
+        return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
+
+    @staticmethod
+    def distance_sort_key_maker(focus_point):
+        def key_function(point):
+            return Editor.euclidean_distance(point, focus_point)
+
+        return key_function
+
+    def sorted_points_by_distance_to(self, other_point):
+        return sorted(self.points, key=self.distance_sort_key_maker(other_point))
+
+    def closest_point_to_(self, other_point):
+        return min(self.points, key=self.distance_sort_key_maker(other_point))
 
     def set_arena_zoom_text(self, num):
         text = self.FONT.render(f'Zoom: x{round(num, 1)}', True, (0, 0, 0))
@@ -74,8 +98,17 @@ class Editor:
             self.points = json.load(infile)
 
     def draw_points_on_arena(self):
-        for x, y in self.points_arena_coords:
-            pygame.draw.circle(self.arena, (0, 0, 0), (x, y), self.NODE_SIZE)
+        for point in self.points:
+            pygame.draw.circle(self.arena, (0, 0, 0), self.true_coords_to_arena(point), self.NODE_SIZE)
+
+        closest_point = self.closest_point_to_(self.point_under_mouse())
+        is_selected = self.does_point_collide_with_mouse(closest_point)
+        print(is_selected)
+        if is_selected:
+            pygame.draw.circle(self.arena, (255, 0, 0), self.true_coords_to_arena(closest_point), self.NODE_SIZE)
+
+    def does_point_collide_with_mouse(self, point):
+        return self.euclidean_distance(self.true_coords_to_arena(point), pygame.mouse.get_pos()) <= self.NODE_SIZE
 
     def handle_exit(self, events):
         for event in events:
@@ -118,8 +151,6 @@ class Editor:
         # repositioning focus point if it's too far in any of the directions
         self.check_focus_point_borders()
 
-        self.fill_points_arena_coords()
-
     def check_focus_point_borders(self):
         if self.zoom_focus_point[0] < self.MIN_POINT_COORD:
             self.zoom_focus_point[0] = self.MIN_POINT_COORD
@@ -140,29 +171,21 @@ class Editor:
         else:
             return bool(pygame.mouse.get_focused())
 
-    def point_under_mouse(self):
-        mouse_pos = pygame.mouse.get_pos()
-        size_ratio = self.size_ratio()
-        displacement_from_focus = mouse_pos[0] / size_ratio, mouse_pos[1] / size_ratio
-        return self.zoom_focus_point[0] + displacement_from_focus[0], self.zoom_focus_point[1] + displacement_from_focus[1]
-
     def handle_add_delete_node(self, events):
-        if not self.node_adding_active:
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT\
-                        and self.is_mouse_in_arena():
-                    self.node_adding_active = True
-        else: # if node adding active
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONUP and event.button == pygame.BUTTON_LEFT:
-                    self.node_adding_active = False
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT \
+                    and self.is_mouse_in_arena():
+                selected_coords = self.point_under_mouse()
+                closest_point = self.closest_point_to_(selected_coords) if self.points else None
+                if closest_point is None or not self.does_point_collide_with_mouse(closest_point):
                     self.points.append(self.point_under_mouse())
-                    self.fill_points_arena_coords()
+                else:
+                    self.points.remove(closest_point)
 
     def handle_swiping(self, events):
         if not self.swiping_active:
             for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT\
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_RIGHT \
                         and self.is_mouse_in_arena():
                     self.swiping_active = True
                     pygame.mouse.get_rel()
@@ -182,7 +205,7 @@ class Editor:
                 self.swiping_active = False
 
             for event in events:
-                if event.type == pygame.MOUSEBUTTONUP and event.button == pygame.BUTTON_LEFT:
+                if event.type == pygame.MOUSEBUTTONUP and event.button == pygame.BUTTON_RIGHT:
                     self.swiping_active = False
 
     def process_inputs(self):
@@ -205,8 +228,6 @@ class Editor:
         while True:
             self.process_inputs()
             self.render_window()
-            print(self.is_mouse_in_arena())
-
 
 
 if __name__ == '__main__':
