@@ -18,8 +18,6 @@ class Editor:
     ARENA_MIN_ZOOM = 1.0
     ARENA_ZOOM_SPEED = 0.1
 
-    MAX_CLICK_DELAY_NS = 200000000
-
     FONT_SIZE = 50
     FONT_PATH = "fonts/Buran USSR.ttf"
     FONT = pygame.font.Font(FONT_PATH, FONT_SIZE)
@@ -44,7 +42,9 @@ class Editor:
         self.set_arena_zoom_text(self.arena_zoom)
 
         self.points = []
+        self.connections = {}
         self.fill_points_from_file("data/json1")
+        self.get_connections_from_points()
 
     def size_ratio(self):
         """
@@ -53,9 +53,6 @@ class Editor:
         """
         size_for_points = self.MAX_POINT_COORD - self.MIN_POINT_COORD
         return (self.ARENA_WIDTH / size_for_points) * self.arena_zoom
-
-    def point_under_mouse(self):
-        return self.arena_coords_to_true(pygame.mouse.get_pos())
 
     def true_coords_to_arena(self, point):
         size_ratio = self.size_ratio()
@@ -70,6 +67,9 @@ class Editor:
         displacement_from_focus = point[0] / size_ratio, point[1] / size_ratio
         return self.zoom_focus_point[0] + displacement_from_focus[0], \
                self.zoom_focus_point[1] + displacement_from_focus[1]
+
+    def point_under_mouse(self):
+        return self.arena_coords_to_true(pygame.mouse.get_pos())
 
     @staticmethod
     def euclidean_distance(point1, point2):
@@ -97,6 +97,18 @@ class Editor:
         with open(file_path) as infile:
             self.points = json.load(infile)
 
+    def save_changes_to_file(self, file_path):
+        with open(file_path, "w") as outfile:
+            json.dump(self.points, outfile)
+
+    def get_connections_from_points(self):
+        self.connections = {index: dict() for index, _ in enumerate(self.points)}
+        for index1, point1 in enumerate(self.points):
+            for index2, point2 in enumerate(self.points):
+                distance = self.euclidean_distance(point1, point2)
+                self.connections[index1][index2] = distance
+                self.connections[index2][index1] = distance
+
     def draw_points_on_arena(self):
         for point in self.points:
             pygame.draw.circle(self.arena, (0, 0, 0), self.true_coords_to_arena(point), self.NODE_SIZE)
@@ -113,6 +125,7 @@ class Editor:
     def handle_exit(self, events):
         for event in events:
             if event.type == pygame.QUIT:
+                self.save_changes_to_file("data/json1")
                 sys.exit()
 
     def handle_zoom(self, events):
@@ -129,6 +142,18 @@ class Editor:
                             self.zoom_focus_point[1] + displacement_from_focus[1]
 
         # interpreting wheel movement
+        self.interpret_zoom_wheel_movement(events)
+
+        # handing zooming process
+        new_size_ratio = self.size_ratio()
+        new_displacement = mouse_pos[0] / new_size_ratio, mouse_pos[1] / new_size_ratio
+        self.zoom_focus_point = [point_under_mouse[0] - new_displacement[0],
+                                 point_under_mouse[1] - new_displacement[1]]
+
+        # repositioning focus point if it's too far in any of the directions
+        self.check_focus_point_borders()
+
+    def interpret_zoom_wheel_movement(self, events):
         wheel_movement = 0
         for event in events:
             if event.type == pygame.MOUSEWHEEL:
@@ -141,15 +166,6 @@ class Editor:
             self.arena_zoom = self.ARENA_MIN_ZOOM
 
         self.set_arena_zoom_text(self.arena_zoom)
-
-        # handing zooming process
-        new_size_ratio = self.size_ratio()
-        new_displacement = mouse_pos[0] / new_size_ratio, mouse_pos[1] / new_size_ratio
-        self.zoom_focus_point = [point_under_mouse[0] - new_displacement[0],
-                                 point_under_mouse[1] - new_displacement[1]]
-
-        # repositioning focus point if it's too far in any of the directions
-        self.check_focus_point_borders()
 
     def check_focus_point_borders(self):
         if self.zoom_focus_point[0] < self.MIN_POINT_COORD:
