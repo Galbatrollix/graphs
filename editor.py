@@ -14,9 +14,9 @@ class Editor:
     ARENA_WIDTH = WINDOW_HEIGHT
     ARENA_HEIGHT = WINDOW_HEIGHT
 
-    ARENA_MAX_ZOOM = 10.0
+    ARENA_MAX_ZOOM = 2000.0
     ARENA_MIN_ZOOM = 1.0
-    ARENA_ZOOM_SPEED = 0.1
+    ARENA_ZOOM_SPEED = 1.2
 
     FONT_SIZE = 50
     FONT_PATH = "fonts/Buran USSR.ttf"
@@ -119,6 +119,15 @@ class Editor:
         if is_selected:
             pygame.draw.circle(self.arena, (255, 0, 0), self.true_coords_to_arena(closest_point), self.NODE_SIZE)
 
+    def TEST_draw_connections_on_arena(self):
+        for point1 in self.points:
+            arena_coord1 = self.true_coords_to_arena(point1)
+            for point2 in self.points:
+                if point1 == point2:
+                    continue
+                arena_coord2 = self.true_coords_to_arena(point2)
+                pygame.draw.line(self.arena, (0,0,255), arena_coord1, arena_coord2, 1)
+
     def does_point_collide_with_mouse(self, point):
         return self.euclidean_distance(self.true_coords_to_arena(point), pygame.mouse.get_pos()) <= self.NODE_SIZE
 
@@ -159,7 +168,11 @@ class Editor:
             if event.type == pygame.MOUSEWHEEL:
                 wheel_movement = event.y
 
-        self.arena_zoom += self.ARENA_ZOOM_SPEED * wheel_movement
+        if wheel_movement > 0:
+            self.arena_zoom *= self.ARENA_ZOOM_SPEED
+        if wheel_movement < 0:
+            self.arena_zoom /= self.ARENA_ZOOM_SPEED
+
         if self.arena_zoom > self.ARENA_MAX_ZOOM:
             self.arena_zoom = self.ARENA_MAX_ZOOM
         if self.arena_zoom < self.ARENA_MIN_ZOOM:
@@ -234,6 +247,7 @@ class Editor:
     def render_window(self):
         self.window.fill((255, 255, 255))
         self.arena.fill((220, 220, 220))
+        self.TEST_draw_connections_on_arena()
         self.draw_points_on_arena()
         self.window.blit(self.arena, (0, 0))
         for item, pos in self.objects_to_display.values():
