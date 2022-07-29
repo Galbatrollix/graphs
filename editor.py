@@ -4,6 +4,9 @@ import pygame
 import sys
 import json
 
+import utilities
+import Greedy
+
 pygame.init()
 
 
@@ -14,7 +17,7 @@ class Editor:
     ARENA_WIDTH = WINDOW_HEIGHT
     ARENA_HEIGHT = WINDOW_HEIGHT
 
-    ARENA_MAX_ZOOM = 2000.0
+    ARENA_MAX_ZOOM = 20000.0
     ARENA_MIN_ZOOM = 1.0
     ARENA_ZOOM_SPEED = 1.2
 
@@ -26,6 +29,7 @@ class Editor:
 
     MIN_POINT_COORD = 0.0
     MAX_POINT_COORD = 1000.0
+    POINT_COORD_RANGE = (MIN_POINT_COORD, MAX_POINT_COORD)
 
     NODE_SIZE = 5
 
@@ -45,6 +49,8 @@ class Editor:
         self.connections = {}
         self.fill_points_from_file("data/json1")
         self.get_connections_from_points()
+
+        self.greedy_results = Greedy.greedy_search_solve(self.points,self.connections)
 
     def size_ratio(self):
         """
@@ -71,22 +77,11 @@ class Editor:
     def point_under_mouse(self):
         return self.arena_coords_to_true(pygame.mouse.get_pos())
 
-    @staticmethod
-    def euclidean_distance(point1, point2):
-        return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
-
-    @staticmethod
-    def distance_sort_key_maker(focus_point):
-        def key_function(point):
-            return Editor.euclidean_distance(point, focus_point)
-
-        return key_function
-
     def sorted_points_by_distance_to(self, other_point):
-        return sorted(self.points, key=self.distance_sort_key_maker(other_point))
+        return sorted(self.points, key=utilities.distance_sort_key_maker(other_point))
 
     def closest_point_to_(self, other_point):
-        return min(self.points, key=self.distance_sort_key_maker(other_point))
+        return min(self.points, key=utilities.distance_sort_key_maker(other_point))
 
     def set_arena_zoom_text(self, num):
         text = self.FONT.render(f'Zoom: x{round(num, 1)}', True, (0, 0, 0))
@@ -105,7 +100,7 @@ class Editor:
         self.connections = {index: dict() for index, _ in enumerate(self.points)}
         for index1, point1 in enumerate(self.points):
             for index2, point2 in enumerate(self.points):
-                distance = self.euclidean_distance(point1, point2)
+                distance = utilities.euclidean_distance(point1, point2)
                 self.connections[index1][index2] = distance
                 self.connections[index2][index1] = distance
 
@@ -115,7 +110,6 @@ class Editor:
 
         closest_point = self.closest_point_to_(self.point_under_mouse())
         is_selected = self.does_point_collide_with_mouse(closest_point)
-        print(is_selected)
         if is_selected:
             pygame.draw.circle(self.arena, (255, 0, 0), self.true_coords_to_arena(closest_point), self.NODE_SIZE)
 
@@ -126,10 +120,17 @@ class Editor:
                 if point1 == point2:
                     continue
                 arena_coord2 = self.true_coords_to_arena(point2)
-                pygame.draw.line(self.arena, (0,0,255), arena_coord1, arena_coord2, 1)
+                pygame.draw.line(self.arena, (0, 0, 255), arena_coord1, arena_coord2, 1)
+
+    def draw_greedy_results_on_arena(self):
+        for id1, id2 in zip(self.greedy_results, self.greedy_results[1:]):
+            arena_coord1 = self.true_coords_to_arena(self.points[id1])
+            arena_coord2 = self.true_coords_to_arena(self.points[id2])
+
+            pygame.draw.line(self.arena, (255, 0, 0), arena_coord1, arena_coord2, 2)
 
     def does_point_collide_with_mouse(self, point):
-        return self.euclidean_distance(self.true_coords_to_arena(point), pygame.mouse.get_pos()) <= self.NODE_SIZE
+        return utilities.euclidean_distance(self.true_coords_to_arena(point), pygame.mouse.get_pos()) <= self.NODE_SIZE
 
     def handle_exit(self, events):
         for event in events:
@@ -247,7 +248,8 @@ class Editor:
     def render_window(self):
         self.window.fill((255, 255, 255))
         self.arena.fill((220, 220, 220))
-        self.TEST_draw_connections_on_arena()
+        #self.TEST_draw_connections_on_arena()
+        #self.draw_greedy_results_on_arena()
         self.draw_points_on_arena()
         self.window.blit(self.arena, (0, 0))
         for item, pos in self.objects_to_display.values():
@@ -263,8 +265,8 @@ class Editor:
 if __name__ == '__main__':
     import random
 
-    list_o_points = [(random.uniform(Editor.MIN_POINT_COORD, Editor.MAX_POINT_COORD),
-                      random.uniform(Editor.MIN_POINT_COORD, Editor.MAX_POINT_COORD))
+    list_o_points = [(random.uniform(*Editor.POINT_COORD_RANGE),
+                      random.uniform(*Editor.POINT_COORD_RANGE))
                      for _ in range(100)]
     with open("data/json1", "w") as outfile:
         json.dump(list_o_points, outfile)
