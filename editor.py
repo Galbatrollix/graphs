@@ -27,6 +27,10 @@ class Editor:
 
     ZOOM_TEXT_VERTICAL_OFFSET = 20
 
+    PLAY_PATH = "images/play.png"
+    STOP_PATH = "images/stop.png"
+    PlAYSTOP_VERTICAL_OFFSET = -20
+
     MIN_POINT_COORD = 0.0
     MAX_POINT_COORD = 1000.0
     POINT_COORD_RANGE = (MIN_POINT_COORD, MAX_POINT_COORD)
@@ -45,12 +49,43 @@ class Editor:
         self.objects_to_display = {}  # format: {"object_name": [item, (coord_x, coord_y)], ...}
         self.set_arena_zoom_text(self.arena_zoom)
 
+        self.playstop_images = {"playing": None, "stopped": None}
+        self.play_mode = "playing"
+        self.playstop_rect = None
+        self.prepare_playstop_button()
+
         self.points = []
         self.connections = {}
         self.fill_points_from_file("data/json1")
         self.get_connections_from_points()
 
-        self.greedy_results = Greedy.greedy_search_solve(self.points,self.connections)
+        self.greedy_results = Greedy.greedy_search_solve(self.points, self.connections)
+
+    def prepare_playstop_button(self):
+        """
+        - Called in __init__. Initializes playstop button.
+        - Takes no arguments, returns None.
+        """
+        playimg = pygame.image.load(self.PLAY_PATH).convert()
+        stopimg = pygame.image.load(self.STOP_PATH).convert()
+        rect = playimg.get_rect()
+
+        rect.bottom = self.ARENA_HEIGHT + self.PlAYSTOP_VERTICAL_OFFSET
+        rect.centerx = self.horizontal_middle_of_menu_area()
+
+        self.playstop_images["stopped"] = playimg
+        self.playstop_images["playing"] = stopimg
+        self.objects_to_display["playstop"] = [self.playstop_images[self.play_mode], rect.topleft]
+
+        self.playstop_rect = rect
+
+    def toggle_playstop(self):
+        if self.play_mode == "playing":
+            self.play_mode = "stopped"
+        elif self.play_mode == "stopped":
+            self.play_mode = "playing"
+        self.objects_to_display["playstop"][0] = self.playstop_images[self.play_mode]
+
 
     def size_ratio(self):
         """
@@ -83,9 +118,12 @@ class Editor:
     def closest_point_to_(self, other_point):
         return min(self.points, key=utilities.distance_sort_key_maker(other_point))
 
+    def horizontal_middle_of_menu_area(self):
+        return self.ARENA_WIDTH + (self.WINDOW_WIDTH - self.ARENA_WIDTH) / 2
+
     def set_arena_zoom_text(self, num):
         text = self.FONT.render(f'Zoom: x{round(num, 1)}', True, (0, 0, 0))
-        horizontal_offset = int(self.ARENA_WIDTH + (self.WINDOW_WIDTH - self.ARENA_WIDTH) / 2 - (text.get_width() / 2))
+        horizontal_offset = int(self.horizontal_middle_of_menu_area() - (text.get_width() / 2))
         self.objects_to_display["arena_zoom_text"] = (text, (horizontal_offset, self.ZOOM_TEXT_VERTICAL_OFFSET))
 
     def fill_points_from_file(self, file_path):
@@ -238,22 +276,38 @@ class Editor:
                 if event.type == pygame.MOUSEBUTTONUP and event.button == pygame.BUTTON_RIGHT:
                     self.swiping_active = False
 
+    def handle_playstop(self, events):
+        if not self.playstop_rect.collidepoint(pygame.mouse.get_pos()):
+            return
+
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT:
+                self.toggle_playstop()
+
+
     def process_inputs(self):
         events = pygame.event.get()
         self.handle_exit(events)
+
         self.handle_zoom(events)
+        self.handle_playstop(events)
+
         self.handle_swiping(events)
         self.handle_add_delete_node(events)
+
 
     def render_window(self):
         self.window.fill((255, 255, 255))
         self.arena.fill((220, 220, 220))
-        #self.TEST_draw_connections_on_arena()
-        #self.draw_greedy_results_on_arena()
+        # self.TEST_draw_connections_on_arena()
+        # self.draw_greedy_results_on_arena()
         self.draw_points_on_arena()
         self.window.blit(self.arena, (0, 0))
         for item, pos in self.objects_to_display.values():
             self.window.blit(item, pos)
+
+
+
         pygame.display.flip()
 
     def play(self):
