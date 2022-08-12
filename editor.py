@@ -31,6 +31,9 @@ class Editor:
     STOP_PATH = "images/stop.png"
     PlAYSTOP_VERTICAL_OFFSET = -20
 
+    BIG_TRIANGLE_PATH = "images/cursor.png"
+    SPACE_BETWEEN_DEMO_BUTTONS = 30
+
     MIN_POINT_COORD = 0.0
     MAX_POINT_COORD = 1000.0
     POINT_COORD_RANGE = (MIN_POINT_COORD, MAX_POINT_COORD)
@@ -49,10 +52,16 @@ class Editor:
         self.objects_to_display = {}  # format: {"object_name": [item, (coord_x, coord_y)], ...}
         self.set_arena_zoom_text(self.arena_zoom)
 
-        self.playstop_images = {"playing": None, "stopped": None}
-        self.play_mode = "playing"
+        self.playstop_images = {}
+        self.is_playing = False
         self.playstop_rect = None
         self.prepare_playstop_button()
+        self.demo_scroll_rects = {"left": None, "right": None}
+        self.prepare_demo_scroll_buttons()
+
+        self.play_reversed = False
+        self.reversed_text_rect = None
+        self.toggle_direction()
 
         self.points = []
         self.connections = {}
@@ -60,6 +69,20 @@ class Editor:
         self.get_connections_from_points()
 
         self.greedy_results = Greedy.greedy_search_solve(self.points, self.connections)
+
+    def toggle_direction(self):
+        self.play_reversed = not self.play_reversed
+        self.reset_direction_text()
+
+    def reset_direction_text(self):
+        str_to_render = "Forward" if not self.play_reversed else "Backwards"
+        text = self.FONT.render(str_to_render, True, (0, 0, 0))
+
+        mid = (self.ARENA_WIDTH + self.playstop_rect.left) / 2
+        horizontal_offset = int(mid - (text.get_width() / 2))
+        self.reversed_text_rect = text.get_rect()
+        self.reversed_text_rect.midleft = horizontal_offset, self.playstop_rect.y + self.playstop_rect.height/2
+        self.objects_to_display["direction_text"] = (text, self.reversed_text_rect.topleft)
 
     def prepare_playstop_button(self):
         """
@@ -73,19 +96,38 @@ class Editor:
         rect.bottom = self.ARENA_HEIGHT + self.PlAYSTOP_VERTICAL_OFFSET
         rect.centerx = self.horizontal_middle_of_menu_area()
 
-        self.playstop_images["stopped"] = playimg
-        self.playstop_images["playing"] = stopimg
-        self.objects_to_display["playstop"] = [self.playstop_images[self.play_mode], rect.topleft]
+        self.playstop_images[0] = playimg
+        self.playstop_images[1] = stopimg
+        self.objects_to_display["playstop"] = [self.playstop_images[int(self.is_playing)], rect.topleft]
 
         self.playstop_rect = rect
 
     def toggle_playstop(self):
-        if self.play_mode == "playing":
-            self.play_mode = "stopped"
-        elif self.play_mode == "stopped":
-            self.play_mode = "playing"
-        self.objects_to_display["playstop"][0] = self.playstop_images[self.play_mode]
+        self.is_playing = not self.is_playing
+        self.objects_to_display["playstop"][0] = self.playstop_images[int(self.is_playing)]
 
+    def prepare_demo_scroll_buttons(self):
+        button_r = pygame.image.load(self.BIG_TRIANGLE_PATH).convert_alpha()
+        button_l = pygame.transform.flip(button_r, True, False)
+
+        button_r_rect = button_r.get_rect()
+        button_l_rect = button_l.get_rect()
+
+        button_l_rect.top = self.playstop_rect.top
+        button_r_rect.top = self.playstop_rect.top
+
+        # mid is a point in the middle of left border and
+        # veritcal line created by left playstop button edge
+        mid = (self.ARENA_WIDTH + self.playstop_rect.left) / 2
+
+        button_l_rect.right = mid -self.SPACE_BETWEEN_DEMO_BUTTONS
+        button_r_rect.left = mid +self.SPACE_BETWEEN_DEMO_BUTTONS
+
+        self.demo_scroll_rects["right"] = button_r_rect
+        self.demo_scroll_rects["left"] = button_l_rect
+
+        self.objects_to_display["demo_scroll_r"] = [button_r, button_r_rect.topleft]
+        self.objects_to_display["demo_scroll_l"] = [button_l, button_l_rect.topleft]
 
     def size_ratio(self):
         """
@@ -284,17 +326,22 @@ class Editor:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT:
                 self.toggle_playstop()
 
+    def handle_play_direction(self, events):
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT:
+                if self.reversed_text_rect.collidepoint(pygame.mouse.get_pos()):
+                    self.toggle_direction()
 
     def process_inputs(self):
         events = pygame.event.get()
         self.handle_exit(events)
 
-        self.handle_zoom(events)
         self.handle_playstop(events)
+        self.handle_play_direction(events)
 
+        self.handle_zoom(events)
         self.handle_swiping(events)
         self.handle_add_delete_node(events)
-
 
     def render_window(self):
         self.window.fill((255, 255, 255))
@@ -306,14 +353,13 @@ class Editor:
         for item, pos in self.objects_to_display.values():
             self.window.blit(item, pos)
 
-
-
         pygame.display.flip()
 
     def play(self):
         while True:
             self.process_inputs()
             self.render_window()
+
 
 
 if __name__ == '__main__':
